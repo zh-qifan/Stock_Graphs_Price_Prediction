@@ -48,6 +48,7 @@ def get_node_features(index, start_date, end_date, windows, feature_list=["Close
     feat_mat = []
     dates_df = pd.DataFrame({"Date": date_list})
     for feature in feature_list:
+        feat_mat.append(np.zeros((len(date_list), len(tickers_list))))
         for window in windows:
             feat_mat.append(np.zeros((len(date_list), len(tickers_list))))
     
@@ -62,6 +63,12 @@ def get_node_features(index, start_date, end_date, windows, feature_list=["Close
 
         i = 0
         for feature in feature_list:
+            feat = price_data[feature]
+            feat = pd.merge(dates_df, feat, how="left", on="Date")
+            feat = feat.loc[(feat["Date"] >= start_date) & (feat["Date"] <= end_date), feature]
+            feat = feat.values
+            feat_mat[i][:, j] = feat
+            i += 1
             for window in windows:
                 # ith features and jth ticker
                 feat = price_data[feature].rolling(window, min_periods=1).mean().reset_index()
@@ -131,6 +138,44 @@ def get_target(index, start_date, end_date, window=5):
 
     return target_mat
 
+def get_price_target(index, start_date, end_date, window=1):
+
+    assert index in ["NASDAQ", "NYSE"], "index must be one of NASDAQ, NYSE, AMEX"
+    assert isinstance(start_date, str), "start_date must be a string"
+    assert isinstance(end_date, str), "end_date must be a string"
+    assert isinstance(window, int), "window must be an int"
+
+    data_folder = "data/google_finance/"
+    date_path = f"data/{index}_aver_line_dates.csv"
+    tickers_path = f"data/{index}_tickers_qualify_dr-0.98_min-5_smooth.csv"
+    date_list = np.loadtxt(date_path, dtype='datetime64[s]', delimiter=',', converters={0: date_converter})
+    tickers_list = np.loadtxt(tickers_path, dtype=str, delimiter=',')
+    start_date = datetime.strptime(start_date, "%Y-%m-%d")
+    end_date = datetime.strptime(end_date, "%Y-%m-%d")
+    date_list_after_end = date_list[(date_list > end_date)]
+    date_list = date_list[(date_list <= end_date) & (date_list >= start_date)]
+
+    end_date_window_adjusted = date_list_after_end[min(window, len(date_list_after_end) - 1)]
+
+    target_mat = np.zeros((len(date_list), len(tickers_list)))
+    dates_df = pd.DataFrame({"Date": date_list})
+    for j, ticker in enumerate(tickers_list):
+        price_data = pd.read_csv(f"{data_folder}/{index}_{ticker}_30Y.csv")
+        price_data.rename({"Unnamed: 0":"Date"}, axis=1, inplace=True)
+        price_data["Date"] = pd.to_datetime(price_data["Date"].str[:10], format='%Y-%m-%d')
+        price_data = price_data.loc[(price_data["Date"] >= start_date) & (price_data["Date"] <= end_date_window_adjusted), ["Date", "Close"]]
+        price_data.loc[:, "Close"] = price_data.loc[:, "Close"].shift(-window)
+        price_data = pd.merge(dates_df, price_data, how="left", on="Date")
+        price_data = price_data.loc[(price_data["Date"] >= start_date) & (price_data["Date"] <= end_date), "Close"]
+
+        target_mat[:, j] = price_data
+
+    target_mat = target_mat.reshape(len(date_list), len(tickers_list), 1)
+
+    return target_mat
+
+
+
 def main():
     dates_dict = {
         "train": ["2013-01-02", "2015-12-31"],
@@ -144,10 +189,12 @@ def main():
         for key, dates in dates_dict.items():
             start_date = dates[0]
             end_date = dates[1]
-            feat_mat = get_node_features(index, start_date, end_date, windows, feature_list)
-            target_mat = get_target(index, start_date, end_date, 5)
-            np.save(f"processed_data/{index}_{key}_feat_mat.npy", feat_mat)
-            np.save(f"processed_data/{index}_{key}_target_mat.npy", target_mat)
+            # feat_mat = get_node_features(index, start_date, end_date, windows, feature_list)
+            # target_mat = get_target(index, start_date, end_date, 5)
+            price_target_mat = get_price_target(index, start_date, end_date, 5)
+            # np.save(f"processed_data/{index}_{key}_feat_mat.npy", feat_mat)
+            # np.save(f"processed_data/{index}_{key}_target_mat.npy", target_mat)
+            np.save(f"processed_data/{index}_{key}_price_target_mat.npy", price_target_mat)
 
 if __name__ == "__main__":
     main()

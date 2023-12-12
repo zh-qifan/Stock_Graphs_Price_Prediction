@@ -30,12 +30,12 @@ def get_sector_industry_relation(index):
     for sector, stock_list in data.items():
         if len(stock_list) <= 1 or sector == "n/a":
             continue
-        relation.append(np.zeros((len(tickers_list), len(tickers_list))))
+        relation.append(np.zeros((len(tickers_list), len(tickers_list), 1)))
         for s in stock_list:
             for t in stock_list:
-                relation[-1][tickers_dict[s], tickers_dict[t]] = 1
+                relation[-1][tickers_dict[s], tickers_dict[t], 0] = 1
     
-    relation = np.concatenate(relation, axis=0)
+    relation = np.concatenate(relation, axis=-1)
     print("The ratio of non-zero entries in the relation matrix is: ", np.sum(relation) / (relation.shape[0] * relation.shape[1] * relation.shape[2]))
     np.save(f"processed_data/{index}_sector_industry_relation.npy", relation)
     return relation
