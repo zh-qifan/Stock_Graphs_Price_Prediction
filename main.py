@@ -52,6 +52,7 @@ def main(index, trial):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_size = 10
     lstm_hidden_size = 64
+    EPOCHS = 5000
     loss_record = []
     model_record = []
 
