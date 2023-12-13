@@ -4,6 +4,8 @@ import logging
 import numpy as np
 import torch
 import gc
+import matplotlib.pyplot as plt
+
 
 from preprocess.correlation_relation import correlation_relation
 from preprocess.node_features_target import get_node_features, get_price_target
@@ -14,19 +16,15 @@ from model.train_test_lstm import train_test_lstm
 from model.train_test_lstm_gat import train_test_lstm_gat
 from model.utils.augment_adj import augment_adj
 
+from model.modules.gat import LSTMGAT
+
 torch.manual_seed(1234)
 np.random.seed(1234)
 
 def main(index, trial):
 
-    # Create folders
-    if not os.path.exists("loggings"):
-        os.makedirs("loggings")
-    if not os.path.exists("saved_models"):
-        os.makedirs("saved_models")
-
     # Set up logger
-    logger = logging.getLogger('CPSC 583 Project')
+    logger = logging.getLogger('CPSC 583')
     logger.setLevel(logging.DEBUG)
     if os.path.exists(f"loggings/{index}_{trial}.log"):
         os.remove(f"loggings/{index}_{trial}.log")
@@ -44,7 +42,6 @@ def main(index, trial):
     corr_threshold = 0.7
     seq_window = 16
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    EPOCHS = 500
     input_size = 10
     lstm_hidden_size = 64
     loss_record = []
@@ -148,6 +145,13 @@ def main(index, trial):
     y_test = torch.tensor(target_test, dtype=torch.float32).to(device)
     logger.info("Loading features data done.")
 
+    # x_train = x_train[:10]
+    # y_train = y_train[:10]
+    # x_val = x_val[:10]
+    # y_val = y_val[:10]
+    # x_test = x_test[:10]
+    # y_test = y_test[:10]
+
     # LSTM trained on each stock separately
     logger.info("Training LSTM on each stock separately...")
     test_losses = []
@@ -229,7 +233,6 @@ def main(index, trial):
             metadata[1].append(("stock", f"sector_industry_{i}", "stock"))
             ei = torch.tensor(np.array(np.where(sector_industry_relation[:, :, i])), dtype=torch.long).to(device)
             edge_index[("stock", f"sector_industry_{i}", "stock")] = ei
-    
     total_test_loss = train_test_lstm_gat(data, edge_index, corr_relation, input_size, seq_window, lstm_hidden_size, metadata, device, EPOCHS, 0.01, logger, f"lstm_gat_not_agg_{index}")
     logger.info("Training LSTM + GAT on all stocks with relation (not aggregated) done.")
     logger.info(f"Average test loss: {total_test_loss / (y_test.shape[0] * y_test.shape[1])}")
@@ -239,7 +242,6 @@ def main(index, trial):
     ## LSTM + GAT trained on all stocks with relation (not aggregated) with bases
     logger.info("Training LSTM + GAT on all stocks with relation (not aggregated) with bases 5...")
     num_bases = 5
-    # for num_bases in [3, 5, 7, 9, 11, 13, 15, 20]:
     total_test_loss = train_test_lstm_gat(data, edge_index, corr_relation, input_size, seq_window, lstm_hidden_size, metadata, device, EPOCHS, 0.01, logger, f"lstm_gat_not_agg_bases_{index}_{num_bases}", num_bases=num_bases)
     logger.info("Training LSTM + GAT on all stocks with relation (not aggregated) with bases 5 done.")
     logger.info(f"Average test loss: {total_test_loss / (y_test.shape[0] * y_test.shape[1])}")
@@ -251,7 +253,6 @@ def main(index, trial):
     # ## LSTM + GAT trained on all stocks with relation (not aggregated) with bases
     logger.info("Training LSTM + GAT on all stocks with relation (not aggregated) with bases 30...")
     num_bases = 30
-    # for num_bases in [3, 5, 7, 9, 11, 13, 15, 20]:
     total_test_loss = train_test_lstm_gat(data, edge_index, corr_relation, input_size, seq_window, lstm_hidden_size, metadata, device, EPOCHS, 0.01, logger, f"lstm_gat_not_agg_bases_{index}_{num_bases}", num_bases=num_bases)
     logger.info("Training LSTM + GAT on all stocks with relation (not aggregated) with bases 30 done.")
     logger.info(f"Average test loss: {total_test_loss / (y_test.shape[0] * y_test.shape[1])}")
@@ -260,20 +261,10 @@ def main(index, trial):
     logger.info(f"Loss record: {loss_record}")
     logger.info(f"Model record: {model_record}")
 
-    # ## LSTM + GAT trained on all stocks with relation (not aggregated) with bases
-    logger.info("Training LSTM + GAT on all stocks with relation (not aggregated) with bases...")
-    for num_bases in [3, 10, 20, 50]:
-        total_test_loss = train_test_lstm_gat(data, edge_index, corr_relation, input_size, seq_window, lstm_hidden_size, metadata, device, EPOCHS, 0.01, logger, f"lstm_gat_not_agg_bases_{index}_{num_bases}", num_bases=num_bases)
-        logger.info(f"Training LSTM + GAT on all stocks with relation (not aggregated) with bases {num_bases} done.")
-        logger.info(f"Average test loss: {total_test_loss / (y_test.shape[0] * y_test.shape[1])}")
-        loss_record.append(total_test_loss / (y_test.shape[0] * y_test.shape[1]))
-        model_record.append(f"lstm_gat_not_agg_bases_{num_bases}")
-        logger.info(f"Loss record: {loss_record}")
-        logger.info(f"Model record: {model_record}")
-
-
     ## LSTM + GAT trained on all stocks with relation (aggregated) with augmented adj
     logger.info("Training LSTM + GAT on all stocks with relation (aggregated) with augmented adj...")
+    wiki_relation = np.load(f"processed_data/{index}_wiki_relation.npy")
+    sector_industry_relation = np.load(f"processed_data/{index}_sector_industry_relation.npy")
     metadata = [["stock"], [("stock", "wiki", "stock"), ("stock", "sector_industry", "stock")]]
     edge_index = {}
     wiki_relation_agg = np.sum(wiki_relation, axis=-1)
@@ -288,6 +279,134 @@ def main(index, trial):
     logger.info(f"Average test loss: {total_test_loss / (y_test.shape[0] * y_test.shape[1])}")
     loss_record.append(total_test_loss / (y_test.shape[0] * y_test.shape[1]))
     model_record.append("lstm_gat_agg_aug")
+
+    # Sensitivity analysis
+    ## num_bases
+    ### LSTM + GAT trained on all stocks with relation (not aggregated) with bases
+    logger.info("Training LSTM + GAT on all stocks with relation (not aggregated) with bases...")
+    metadata = [["stock"], []]
+    edge_index = {}
+    for i in range(wiki_relation.shape[-1]):
+        if np.sum(wiki_relation[:, :, i]) > 1:
+            idx = np.where(np.sum(wiki_relation[:, :, i], axis=1) > 0)[0]
+            wiki_relation[idx, idx, i] = 1
+            metadata[1].append(("stock", f"wiki_{i}", "stock"))
+            ei = torch.tensor(np.array(np.where(wiki_relation[:, :, i])), dtype=torch.long).to(device)
+            edge_index[("stock", f"wiki_{i}", "stock")] = ei
+    for i in range(sector_industry_relation.shape[-1]):
+        if np.sum(sector_industry_relation[:, :, i]) > 1:
+            idx = np.where(np.sum(sector_industry_relation[:, :, i], axis=1) > 0)[0]
+            sector_industry_relation[idx, idx, i] = 1
+            metadata[1].append(("stock", f"sector_industry_{i}", "stock"))
+            ei = torch.tensor(np.array(np.where(sector_industry_relation[:, :, i])), dtype=torch.long).to(device)
+            edge_index[("stock", f"sector_industry_{i}", "stock")] = ei
+    
+    for num_bases in [10, 20, 50]:
+        total_test_loss = train_test_lstm_gat(data, edge_index, corr_relation, input_size, seq_window, lstm_hidden_size, metadata, device, EPOCHS, 0.01, logger, f"lstm_gat_not_agg_bases_{index}_{num_bases}", num_bases=num_bases)
+        logger.info(f"Training LSTM + GAT on all stocks with relation (not aggregated) with bases {num_bases} done.")
+        logger.info(f"Average test loss: {total_test_loss / (y_test.shape[0] * y_test.shape[1])}")
+        loss_record.append(total_test_loss / (y_test.shape[0] * y_test.shape[1]))
+        model_record.append(f"lstm_gat_not_agg_bases_{num_bases}")
+        logger.info(f"Loss record: {loss_record}")
+        logger.info(f"Model record: {model_record}")
+    
+    ## num_heads
+    ### LSTM + GAT trained on all stocks with relation (aggregated)
+    logger.info("Training LSTM + GAT on all stocks with relation (aggregated)...")
+    metadata = [["stock"], [("stock", "wiki", "stock"), ("stock", "sector_industry", "stock")]]
+    edge_index = {}
+    wiki_relation_agg = np.sum(wiki_relation, axis=-1)
+    sector_industry_relation_agg = np.sum(sector_industry_relation, axis=-1)
+    edge_index[("stock", "wiki", "stock")] = torch.tensor(np.array(np.where(wiki_relation_agg)), dtype=torch.int32).to(device)
+    edge_index[("stock", "sector_industry", "stock")] = torch.tensor(np.array(np.where(sector_industry_relation_agg)), dtype=torch.int32).to(device)
+
+    for num_heads in [3, 5, 7]:
+        total_test_loss = train_test_lstm_gat(data, edge_index, corr_relation, input_size, seq_window,lstm_hidden_size, metadata, device, EPOCHS, 0.01, logger, f"lstm_gat_agg_{index}_{num_heads}")
+        logger.info(f"Training LSTM + GAT on all stocks with relation (aggregated) with {num_heads} heads done.")
+        logger.info(f"Average test loss: {total_test_loss / (y_test.shape[0] * y_test.shape[1])}")
+        loss_record.append(total_test_loss / (y_test.shape[0] * y_test.shape[1]))
+        model_record.append(f"lstm_gat_agg_{num_heads}")
+
+    # Analysis on attention
+    logger.info("Analysis on attention...")
+    num_heads = 3
+    wiki_relation = np.load(f"processed_data/{index}_wiki_relation.npy")
+    sector_industry_relation = np.load(f"processed_data/{index}_sector_industry_relation.npy")
+
+    metadata = [["stock"], [("stock", "wiki", "stock"), ("stock", "sector_industry", "stock")]]
+    edge_index = {}
+    wiki_relation_agg = np.sum(wiki_relation, axis=-1)
+    sector_industry_relation_agg = np.sum(sector_industry_relation, axis=-1)
+    edge_index[("stock", "wiki", "stock")] = torch.tensor(np.array(np.where(wiki_relation_agg)), dtype=torch.int32).to(device)
+    edge_index[("stock", "sector_industry", "stock")] = torch.tensor(np.array(np.where(sector_industry_relation_agg)), dtype=torch.int32).to(device)
+
+    model = LSTMGAT(input_size, seq_window, lstm_hidden_size, metadata, num_heads=num_heads).to(device)
+    model.load_state_dict(torch.load(f"saved_models/lstm_gat_agg_{index}.pt", map_location=device))
+    wiki_alphas_list = []
+    sector_industry_alphas_list = []
+    wiki_edges_index_list = None
+    sector_industry_edges_index_list = None
+    model.eval()
+    with torch.no_grad():
+        for i in range(x_test.shape[0]):
+            alphas, self_loop_edge_indexes = model.get_att_mat(x_test[i], edge_index)
+            w_values = alphas["stock__wiki__stock"]
+            s_values = alphas["stock__sector_industry__stock"]
+            wiki_alphas_list.append(w_values)
+            sector_industry_alphas_list.append(s_values)
+            if i == 0:
+                wiki_edges_index_list = self_loop_edge_indexes["stock__wiki__stock"]
+                sector_industry_edges_index_list = self_loop_edge_indexes["stock__sector_industry__stock"]
+
+    if index == "NASDAQ":
+        src = 2
+    elif index == "NYSE":
+        src = 147
+    tickers_path = f"data/{index}_tickers_qualify_dr-0.98_min-5_smooth.csv"
+    tickers_list = np.loadtxt(tickers_path, dtype=str, delimiter=',')
+    logger.info(f"Stock: {tickers_list[src]}")
+    wiki_neighbors = wiki_edges_index_list[0][wiki_edges_index_list[1] == src]
+    sector_industry_neighbors = sector_industry_edges_index_list[0][sector_industry_edges_index_list[1] == src]
+    logger.info(f"Wiki neighbors: {tickers_list[wiki_neighbors]}")
+    logger.info(f"Sector industry neighbors: {tickers_list[sector_industry_neighbors]}")
+    wiki_alphas_list = np.array(wiki_alphas_list)
+    sector_industry_alphas_list = np.array(sector_industry_alphas_list)
+    wiki_alpha_values = np.array([a[wiki_edges_index_list[1] == src] for a in wiki_alphas_list[:, :, 1]])
+    sector_industry_alpha_values = np.array([a[sector_industry_edges_index_list[1] == src] for a in sector_industry_alphas_list[:, :, 1]])
+    np.save(f"loggings/{index}_wiki_alpha_values.npy", wiki_alpha_values)
+    np.save(f"loggings/{index}_sector_industry_alpha_values.npy", sector_industry_alpha_values)
+
+    # Ticker labels for each edge type
+    sector_industry_tickers = tickers_list[sector_industry_neighbors]
+    wiki_tickers = tickers_list[wiki_neighbors]
+
+    # Create heatmaps
+    plt.figure(figsize=(18, 8))
+
+    # Heatmap for sector-industry edge type
+    plt.subplot(1, 2, 1)
+    heatmap1 = plt.imshow(sector_industry_alpha_values.T, aspect='auto', cmap='viridis')
+    plt.colorbar(heatmap1)
+    plt.xticks([])
+    plt.yticks(range(len(sector_industry_tickers)), sector_industry_tickers)
+    plt.title(f'Sector-Industry Neighbor for {tickers_list[src]}')
+    plt.xlabel('Time')
+
+    # Heatmap for wiki edge type
+    plt.subplot(1, 2, 2)
+    heatmap2 = plt.imshow(wiki_alpha_values.T, aspect='auto', cmap='viridis')
+    plt.colorbar(heatmap2)
+    plt.xticks([])
+    plt.yticks(range(len(wiki_tickers)), wiki_tickers)
+    plt.title(f'Supplier-Customer Neighbor for {tickers_list[src]}')
+    plt.xlabel('Time')
+
+    plt.tight_layout()
+    plt.savefig(f"loggings/{index}_attention.png", dpi=300)
+    logger.info(f"Analysis on attention done.")
+
+    logger.info(f"Loss record: {loss_record}")
+    logger.info(f"Model record: {model_record}")
 
     # Close logger
     handlers = logger.handlers[:]
