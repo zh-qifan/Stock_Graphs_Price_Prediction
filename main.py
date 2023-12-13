@@ -23,6 +23,14 @@ np.random.seed(1234)
 
 def main(index, trial):
 
+    # Creare folders
+    if not os.path.exists("loggings"):
+        os.makedirs("loggings")
+    if not os.path.exists("saved_models"):
+        os.makedirs("saved_models")
+    if not os.path.exists("processed_data"):
+        os.makedirs("processed_data")
+
     # Set up logger
     logger = logging.getLogger('CPSC 583')
     logger.setLevel(logging.DEBUG)
@@ -48,8 +56,6 @@ def main(index, trial):
     model_record = []
 
     # Preprocess data and if processed data exists, pass.
-    if not os.path.exists("processed_data"):
-        os.makedirs("processed_data")
 
     if not os.path.exists(f"processed_data/{index}_wiki_relation.npy"):
         logger.info("Preprocessing wiki relation...")
