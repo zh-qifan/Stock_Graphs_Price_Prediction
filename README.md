@@ -12,7 +12,7 @@ pip install -r requirements.txt
 The datasets I used are forked from https://github.com/fulifeng/Temporal_Relational_Stock_Ranking. 
 
 ## Run Experiment
-The results mentioned in the report can be reproduced by running the following code. At this stage, we do not include any arguments for the script. In addition, the model training can be super slow (~24hr on A100...be patient). The training speed may be further optimized by split the large graph into small pieces since one of our stock graphs is blockwise fully connected. 
+The results mentioned in the report can be reproduced by running the following code. At this stage, we do not add any arguments for the script. In addition, the model training can be super slow (~24hr on A100...be patient). The training speed may be further optimized by split the large graph into small pieces since one of our stock graphs is blockwise fully connected. 
 
 ```{bash}
 python main.py
